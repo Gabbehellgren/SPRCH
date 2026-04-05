@@ -1,9 +1,3 @@
-<style>
-    strong{
-        color: hsl(194, 82%, 48%);
-    }
-</style>
-
 # Kravspecifikation för projekt: **Lynx**
 
 Av Oscar Hellgren Te23A Ebersteinska Gymnasium 
