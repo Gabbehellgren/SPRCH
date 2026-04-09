@@ -1,8 +1,8 @@
 # Kravspecifikation för projekt: **Lynx**
 
-Av Oscar Hellgren Te23A Ebersteinska Gymnasium 
+Loke är sprattens gud
 
-Safe 
+Av Oscar Hellgren Te23A Ebersteinska Gymnasium 
 
 ## 1. Innehålls förtekning
 1. <a href="#1-innehålls-förtekning">Innehålls förtekning</a>
