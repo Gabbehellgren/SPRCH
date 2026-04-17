@@ -1,6 +1,6 @@
 #==============================#
 #                              #
-#            Färger            #
+#           Färger             #
 #                              #
 #==============================#
 # Oscar Hellgren Te23A Ebersteinska Gy

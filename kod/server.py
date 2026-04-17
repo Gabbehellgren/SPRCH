@@ -7,7 +7,6 @@
 
 
 # Importer
-from mailbox import Message
 from time import time, sleep
 from threading import Thread
 from socket import gethostname, gethostbyname, socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST
@@ -20,7 +19,6 @@ from ansi_colors import Colors
 # En klass som ansvarar för att skriva ut meddelanden som alla andra klasser ärver
 # Den ska skicka ut vanliga, varnings och error meddelanden.
 # 2026/04/09
-
 class ConsoleOutput(Colors):
     def __init__(self, id:str):
         super().__init__()
@@ -152,6 +150,7 @@ class UdpBroadcaster(ConsoleOutput):
         self.brk()
 
 
+
 out = ConsoleOutput("System\t\t")
 info = ComputerInfo()
-udp = UdpBroadcaster(info.name, "<broadcast>", 8888, 1)
+udp = UdpBroadcaster(info.name, "127.0.0.1", 8888, 1)
