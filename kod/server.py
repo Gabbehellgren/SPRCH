@@ -153,4 +153,4 @@ class UdpBroadcaster(ConsoleOutput):
 
 out = ConsoleOutput("System\t\t")
 info = ComputerInfo()
-udp = UdpBroadcaster(info.name, "127.0.0.1", 8888, 1)
+udp = UdpBroadcaster(info.name, "<broadcast>", 8888, 1)

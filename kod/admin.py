@@ -86,8 +86,9 @@ class UdpReciver:
 
 # Klass som ansvarar för alla kommandon och vad de gör. Ansvarar för signal interups också ev.
 # 2026/04/17
-class Commands:
+class Commands(Colors):
     def __init__(self):
+        super().__init__()
         self.terminations = []
 
 
@@ -102,10 +103,13 @@ class Commands:
     #====Commands=================================
 
     def ls(self, servers: list):
-        print("Listing servers:")
-        for server in servers:
-            print(end="\t")
-            print(server.name + "@" + server.ip)
+        if len(servers) > 0:
+            print("Listing servers:")
+            for server in servers:
+                print(end="\t")
+                print(self.Blue + server.name + "@" + server.ip + self.end)
+        else:
+            print("No servers discoverd")
 
 
     def clear(self):
@@ -120,3 +124,22 @@ class Commands:
         global running
         running = False
         self.terminateAll()
+
+running = True
+
+com = Commands()
+udpReciver = UdpReciver(8888)
+com.add_term(udpReciver.terminate)
+
+while running:
+    suspected_command = input("SPRCH-A: >>> ")
+    command = suspected_command.lower()
+
+    if command == "ls":
+        com.ls(udpReciver.available_servers)
+
+    elif command == "clear":
+        com.clear()
+
+    elif command in ["stop", "^c", "quit", "exit"]:
+        com.stop()
