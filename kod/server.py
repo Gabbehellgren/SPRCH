@@ -6,10 +6,12 @@
 # Oscar Hellgren Te23A Ebersteinska Gy
 
 
-# Importer
+# Importerfrom ssl import SOCK_STREAM
+from concurrent.futures import thread
 from time import time, sleep
 from threading import Thread
-from socket import gethostname, gethostbyname, socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST
+from signal import signal, SIGINT, SIGTERM
+from socket import gethostname, gethostbyname, socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST, SOCK_STREAM
 from ansi_colors import Colors
 
 
@@ -66,7 +68,7 @@ class ComputerInfo(ConsoleOutput):
 
         try:
             self.name = gethostname()
-            self.nrm("Hostname: " + self.Green + self.name)
+            self.nrm("Hostname: " + self.Green + self.name + self.end)
 
         except:
             self.cau("Could not retrieve hostname")
@@ -77,7 +79,7 @@ class ComputerInfo(ConsoleOutput):
             ip = sock.getsockname()[0]
             sock.close()
             self.address = ip
-            self.nrm("Ip: " + self.Green + self.address)
+            self.nrm("Ip: " + self.Green + self.address + self.end)
 
         except:
             self.cau("Could not retrieve ip")
@@ -88,69 +90,45 @@ class ComputerInfo(ConsoleOutput):
         self.brk()
 
 
+# UDP klass som skickar udp paket ut i "rymden" för där kan ingen höra en fisa
+# 2026/04/20
+class Udp:
+    def __init__(self, message: str, send_to: str, port: int, period: float = 1):
+        self.sock = socket(AF_INET, SOCK_DGRAM)
+        self.sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 
-
-# En klass som ansvarar för udp anrop
-# Som default bör den skrika datorns Hostname (Mitt fall "Marathon")
-# Denna klass ska sälv ansvara för att skicka udp anrop men ska också ha en terminerings metod
-# Egen mainloop som kan köras asyncront
-# 2026/04/06
-class UdpBroadcaster(ConsoleOutput):
-    def __init__(self, message: str, target_ip: str, port: int, delay: float = 1):
-        super().__init__("UDP-broadcaster")
-
-        self.nrm("Initilizing UDP broadcaster")
-
-        self.message = message
-        self.target = target_ip
+        self.send_to = send_to
         self.port = port
-        self.delay = delay
+        self.period = period
         self.running = True
-        self.broadcast = False
-    
-        self.socket = socket(AF_INET, SOCK_DGRAM)
-        self.socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-
-        self.thread = Thread(None, self.mainloop)
-        self.thread.start()
-
-        self.nrm("UDP brodcaster successfully started")
-
-        self.switchState()
-
-        self.brk()
-
+        self.message = message
+        
+        self.mainThread = Thread(target=self.mainloop)
+        self.mainThread.start()
 
     def mainloop(self):
-        packed_binary = self.message.encode("UTF-8")
-        destination = (self.target, self.port)
         pit = 0
-
         while self.running:
-            while self.broadcast:
-                if (time() - pit) >= self.delay:
-                    self.socket.sendto(packed_binary, destination)
-                    pit = time()
+            pit = time()
+            
+            self.sock.sendto(self.message.encode(), (self.send_to, self.port))
+
+            elapsed = time() - pit
+            sleep(max(0, self.period - elapsed))
 
 
-    def switchState(self):
-        self.broadcast = not self.broadcast
-        if self.broadcast:
-            self.cau(f"UDP broadcast started! A package is sent every {self.delay}s making your puper visible to others")
-        else:
-            self.nrm("The program is no-longer broadcasting")
-    
     def terminate(self):
-        self.nrm("Attemting to close UDP broadcaster")
-        self.broadcast = False
         self.running = False
-        self.thread.join()
-        self.socket.close()
-        self.nrm("Successfully closed the UDP broadcaster")
-        self.brk()
+        self.mainThread.join()
 
-
-
-out = ConsoleOutput("System\t\t")
+console = ConsoleOutput("System\t\t")
 info = ComputerInfo()
-udp = UdpBroadcaster(info.name, "<broadcast>", 8888, 1)
+udp = Udp(info.name, "127.0.0.1", info.udp_port)
+
+def stop(sig, dat):
+    print()
+    console.nrm("Closing program")
+    udp.terminate()
+
+signal(SIGINT, stop)
+signal(SIGTERM, stop)

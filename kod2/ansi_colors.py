@@ -11,7 +11,7 @@ class Colors:
     def __init__(self):
         self.colors = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"]
         self.styles = ["end", "bold", "dim", "italic", "underline", "blink", "blink_fast", "reverse", "hidden", "striketrough"]
-        
+
         self._generate_standard()
 
 

@@ -82,6 +82,10 @@ class UdpReciver:
             self.port = port
 
 
+class TcpHandler:
+    def __init__(self):
+
+        def 
 
 
 # Klass som ansvarar för alla kommandon och vad de gör. Ansvarar för signal interups också ev.
@@ -106,10 +110,11 @@ class Commands(Colors):
         if len(servers) > 0:
             print("Listing servers:")
             for server in servers:
-                print(end="\t")
-                print(self.Blue + server.name + "@" + server.ip + self.end)
+                index = servers.index(server) + 1
+                print(end=" " + str(index) + ": ")
+                print(self.Blue + server.name + "@" + server.ip + self.end + "\n")
         else:
-            print("No servers discoverd")
+            print("No servers discoverd\n")
 
 
     def clear(self):
@@ -128,6 +133,7 @@ class Commands(Colors):
 running = True
 
 com = Commands()
+com.clear()
 udpReciver = UdpReciver(8888)
 com.add_term(udpReciver.terminate)
 
