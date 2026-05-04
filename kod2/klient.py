@@ -4,92 +4,132 @@
 # Detta är det så kallade "offret"
 # Den ansluter till servern. 
 
-from socket import socket, AF_INET, SOCK_STREAM, gethostname, error as so_error
+from socket import socket, AF_INET, SOCK_STREAM, gethostname
+from types import NoneType
+from ansi_colors import Colors
 from threading import Thread
 from signal import signal, SIGINT, SIGTERM
 from time import sleep, time
+from os import system, name as OSname, get_terminal_size as tsize
 
+
+# 2026-05-02
 class Tcp:
-    def __init__(self, target:str, port:int = 8888):
-        self.target_ip = target
+    def __init__(self, target_ip: str, port: int = 8888):
+        self.target_ip = target_ip
         self.port = port
-        self.is_connected = False
-        self.handshake = 0
+        
+        self.connected = False
+        self.last_handshake: float = None
+        self.threshold: int = 45
 
-        self.t = Thread(target=self.checkConnection)
-        self.t.start()
+        self.socket = socket()
+        
+        self.check_connection_thread = Thread(target=self.check_connection)
+        self.check_connection_thread.daemon = True
+        self.check_connection_thread.start()
 
+
+    def send(self, msg: str):
+        self.socket.send(msg.upper().encode())
+
+
+    def recv(self, size: int = 1024):
+        return self.socket.recv(size).decode().upper()
+    
 
     def connect(self):
         delay = 1
-        while True:
-            pit = time()
-            try:
-                print("Trying to connect...")
-                self.socket = socket(AF_INET, SOCK_STREAM)
-                self.socket.settimeout(1)
-                self.socket.connect((self.target_ip, self.port))
-                self.send(gethostname())
-                if self.recv() == "connected".upper():
-                    self.is_connected = True
-                    print("Connected")
-                    self.handshake = time()
-                    break
 
-            except so_error:
-                pass
+        while not self.connected and running:
+            pit = time()
+
+            self.socket = socket(AF_INET, SOCK_STREAM)
+            self.socket.settimeout(1)
+
+            try: 
+                self.socket.connect((self.target_ip, self.port))
+            
+            except OSError: pass
+
+
+            else: 
+                try: 
+                    self.send(gethostname())
+
+                except OSError: pass
+
+
+                else:
+                    try: 
+                        message = self.recv()
+
+                    except OSError: pass
+
+                    else:
+                        if message == "CONNECTED":
+                            self.connected = True
+                            self.last_handshake = time()
+                            break
+
 
             elapsed = time() - pit
             sleep(max(0, delay - elapsed))
 
-            
-    def send(self, msg:str):
-        try:
-            self.socket.send(msg.upper().encode())
-
-        except so_error:
-            self.is_connected = False
-
-
-    def recv(self):
-        message = self.socket.recv(1024).decode().upper()
-        return message
-    
-
-    def checkConnection(self):
-        if time() - self.handshake >= 2:
-            self.is_connected = False
-
 
     def terminate(self):
         self.socket.close()
-        self.t.join()
+        self.check_connection_thread.join()
+
+            
 
 
 running = True
-tcp = Tcp("192.168.0.105", 8888)
-
+tcp = Tcp("sprch.hellgren.dev", 8888)
 
 def gracefullStop(sig, frame):
-    print()
     global running
     running = False
-    tcp.terminate()
 
 
 signal(SIGINT, gracefullStop)
 signal(SIGTERM, gracefullStop)
 
 
-while running:
-    if not tcp.is_connected:
-        tcp.connect()
+def tcp_mainloop():
+    while running:
+        pit = time()
 
-    try:
-        message = tcp.recv()
-    except OSError:
-        pass
-    
-    if message == "STATUS":
-        tcp.send("ALIVE")
-        tcp.handshake = time()
+        tcp.connect()
+        
+        try:
+            message = tcp.recv()
+
+        except OSError: pass
+        
+        else:
+            match message:
+                case "ALIVE?":
+                    tcp.send("ALIVE")
+                    print("ALIVE")
+
+        elapsed = time() - pit
+        sleep(max(0, 1 - elapsed))
+
+tcp_thread = Thread(target=tcp_mainloop)
+tcp_thread.start()
+
+
+
+
+while running:
+    pit = time()
+
+    elapsed = time() - pit
+    sleep(max(0, 1 - elapsed))
+
+
+
+
+tcp.terminate()
+tcp_thread.join()

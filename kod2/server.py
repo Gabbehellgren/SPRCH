@@ -6,105 +6,127 @@
 # Main har hand om de anslutningar som finns och routar trafik.
 # extra tråd är till för att hantera nya anslutningar.
 
-from socket import socket, AF_INET, SOCK_STREAM, gethostname, gethostbyname, SOL_SOCKET, SO_REUSEADDR, error as sockerr
+from ast import Name
+from curses import tparm
+from socket import socket, AF_INET, SOCK_STREAM, gethostname, gethostbyname, SOL_SOCKET, SO_REUSEADDR, error as sock_error
 from threading import Thread
 from time import time, sleep, strftime, localtime
 from signal import signal, SIGINT, SIGTERM, SIGTSTP
-from os import error as oserr, system, name as os, get_terminal_size as tSize
+from os import system, name as osType, get_terminal_size as tSize
 from ansi_colors import Colors
 
 
-# 2026-04-28
+# 2026-04-29
 # En klass som kan ta hand om inkommande anslutningar. och skickar vidare trafik.
 class Tcp:
-    def __init__(self, port:int = 8888):
-        self.ip = self.get_own_ip()
+    def __init__(self, port: int = 8888, time_between_catchups: int = 30):
         self.port = port
+        self.ip = self.get_ip()
+        self.time_between_catchups = time_between_catchups 
 
-        self.clients:list = []
+        self.computers: list[Tcp.Computer] = []
 
-        self.sock = socket(AF_INET, SOCK_STREAM)
-        self.sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        self.sock.settimeout(5)
-        self.sock.bind((self.ip, self.port))
-        self.sock.listen()
+        self.socket = socket(AF_INET, SOCK_STREAM)
+        self.socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self.socket.settimeout(1)
+        self.socket.bind((self.ip, self.port))
+        self.socket.listen()
 
-        self.t = Thread(target=self.listen_for_connection)
-        
+        self.listen_for_connections_thread = Thread(target=self.listen_for_connections)
+        self.stay_in_touch_thread = Thread(target=self.stay_in_touch)
 
-    def startT(self):
-        self.t.start()
+        self.listen_for_connections_thread.start()
+        self.stay_in_touch_thread.start()
 
 
-    def get_own_ip(self):
-        with socket() as s:
-            s.connect(("8.8.8.8", 443))
-            return s.getsockname()[0]
+    def get_ip(self) -> str:
+        with socket() as tmpSock:
+            tmpSock.connect(("8.8.8.8", 443))
+            return tmpSock.getsockname()[0]
         
     
-    def listen_for_connection(self):
+    def listen_for_connections(self):
         while running:
-            while paused: sleep(5)
             try:
-                sock, address = self.sock.accept()
-                client = self.Client(sock, address)
-                client.name = client.recv()
+                socket, address = self.socket.accept()
 
-                unique = True
-                for computer in self.clients:
-                    if computer.name == client.name and computer.ip == client.ip:
-                        unique = False
-                        break
-                
-                if unique:
-                    self.clients.append(client)
-                    client.send("connected".upper())
+            except OSError: pass
 
-            except:
-                pass
+            else:
+                computer = self.Computer(socket, address)
 
+                try:
+                    computer.name = computer.recv(1024)
+                    
+                except OSError: pass
 
-    def checkConnections(self):
-        global last_error
-        if len(self.clients) == 0: return
-
-        clients = []
-        for computer in self.clients:
-            try:
-                computer.send("STATUS")
-                message = computer.recv()
-
-                if message == "ALIVE":
-                    clients.append(computer)
-                    last_error += "puper found"
                 else:
-                    last_error += message
+                    unique = True
+                    for stored_computer in self.computers:
+                        if computer.name == stored_computer.name or computer.ip == stored_computer:
+                            unique = False
+                            break
 
-            except OSError:
-                pass
+                    if unique:
+                        try:
+                            computer.send("CONNECTED")
 
-        self.clients = clients
+                        except OSError: pass
+                        
+                        else:
+                            self.computers.append(computer)
+
+    
+    def stay_in_touch(self):
+        while running:
+            pit = time()
             
+            tmp_computers = []
+            for computer in self.computers:
+                try:
+                    computer.send("ALIVE?")
+                
+                except OSError:
+                    pass
+
+                else:
+                    try:
+                        reply = computer.recv(1024)
+
+                    except OSError:
+                        pass
+
+                    else:
+                        if reply == "ALIVE":
+                            tmp_computers.append(computer)
+            
+            self.computers = tmp_computers
+
+            elapsed = time() - pit
+            sleep(max(0, self.time_between_catchups - elapsed))
+
 
     def terminate(self):
-        self.sock.close()
-        self.t.join()
+        self.socket.close()
+        self.listen_for_connections_thread.join()
+        self.stay_in_touch_thread.join()
 
 
-    class Client:
-        def __init__(self, socket: socket, address: tuple):
+    class Computer:
+        def __init__(self, socket: socket, _retadress, name: str = "", timeout: int = 5):
             self.socket = socket
-            self.name:str = None
-            self.ip:str = address[0]
-
+            self.socket.settimeout(timeout)
+            self.ip: str = _retadress[0]
+            self.port: int = _retadress[1]
+            self.name = name
 
         def send(self, msg: str):
-            self.socket.send(msg.encode())
+            self.socket.send(msg.upper().encode())
 
+        def recv(self, size: int):
+            return self.socket.recv(size).decode().upper()            
 
-        def recv(self):
-            return self.socket.recv(1024).decode()
-
+        
 
 
 
@@ -131,7 +153,7 @@ class Output(Colors):
 
 
     def clear(self):
-        if os == "nt":
+        if osType == "nt":
             system("cls")
         
         else:
@@ -155,12 +177,14 @@ class Output(Colors):
         print("Welcome! This is the server side of the SPRCH service")
         print("\nTo " + self.Red + "CLOSE" + self.end + " the program press " + self.Red + "CTRL " + self.end + "+" + self.Red + " C" + self.end)
         print("The program also closes if e.g. computer is shutdown")
-        print("\n" + self.Black + "-"*53 + self.end + "\n")
+        
 
 
     def servers(self, computers: list = []):
+        
         if len(computers) == 0:
             print("\tNo computers connected\n")
+            print(self.Black + "-"*53 + self.end + "\n")
             return
         
         columns = (30, 17)
@@ -189,30 +213,14 @@ class Output(Colors):
 
 
         print(self.end)
-
-
-    def status(self):
-
         print("\n" + self.Black + "-"*53 + self.end + "\n")
-        
-        print(self.bold + "Status: ", end="")
-
-        if paused:
-            print(self.red + "○ " + "Paused" + self.end)
-
-        else:
-            print(self.green + "● " + "Running" + self.end)
-
 
 
     def update(self, computers: list = []):
         self.clear()
         self.title()
-        self.desc()
-        print(last_error)
-
         self.servers(computers)
-
+        self.desc()
 
 
 
@@ -221,13 +229,9 @@ running = True
 paused = False
 delay = 1
 
-last_error = "No error"
 
 out = Output()
 tcp = Tcp()
-
-
-
 
 
 def graceFullStop(sig, frame):
@@ -239,26 +243,21 @@ def graceFullStop(sig, frame):
 
 
 
-def pause(síg, frame):
-    global paused
-    paused = not paused
+def lockout(sig, frame):
+    print(" is locked..")
 
 
 
 
 signal(SIGINT, graceFullStop)
 signal(SIGTERM, graceFullStop)
-signal(SIGTSTP, pause)
-
-
-tcp.startT()
+signal(SIGTSTP, lockout)
 
 
 while running:
     pit = time()
 
-    out.update(tcp.clients)
-    tcp.checkConnections()
+    out.update(tcp.computers)
 
     elapsed = time() - pit
     sleep(max(0, delay - elapsed))
