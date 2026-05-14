@@ -19,10 +19,10 @@ from ansi_colors import Colors
 # 2026-04-29
 # En klass som kan ta hand om inkommande anslutningar. och skickar vidare trafik.
 class Tcp:
-    def __init__(self, port: int = 8888, time_between_catchups: int = 30):
+    def __init__(self, port: int = 8888, min_loop_time: int = 1):
         self.port = port
         self.ip = self.get_ip()
-        self.time_between_catchups = time_between_catchups 
+        self.min_loop_time = min_loop_time 
 
         self.computers: list[Tcp.Computer] = []
 
@@ -32,11 +32,9 @@ class Tcp:
         self.socket.bind((self.ip, self.port))
         self.socket.listen()
 
-        self.listen_for_connections_thread = Thread(target=self.listen_for_connections)
-        self.stay_in_touch_thread = Thread(target=self.stay_in_touch)
+        self.main_thread = Thread(target=self.mainloop)
 
-        self.listen_for_connections_thread.start()
-        self.stay_in_touch_thread.start()
+        self.main_thread.start()
 
 
     def get_ip(self) -> str:
@@ -46,70 +44,65 @@ class Tcp:
         
     
     def listen_for_connections(self):
-        while running:
-            try:
-                socket, address = self.socket.accept()
+        try:
+            socket, address = self.socket.accept()
 
+        except OSError: pass
+
+        else:
+            computer = self.Computer(socket, address)
+
+            try:
+                computer.name = computer.recv(1024)
+                    
             except OSError: pass
 
             else:
-                computer = self.Computer(socket, address)
+                unique = True
+                for stored_computer in self.computers:
+                    if computer.name == stored_computer.name or computer.ip == stored_computer:
+                        unique = False
+                        break
 
-                try:
-                    computer.name = computer.recv(1024)
-                    
-                except OSError: pass
+                if unique:
+                    try:
+                        computer.send("CONNECTED")
 
-                else:
-                    unique = True
-                    for stored_computer in self.computers:
-                        if computer.name == stored_computer.name or computer.ip == stored_computer:
-                            unique = False
-                            break
-
-                    if unique:
-                        try:
-                            computer.send("CONNECTED")
-
-                        except OSError: pass
+                    except OSError: pass
                         
-                        else:
-                            self.computers.append(computer)
+                    else:
+                        self.computers.append(computer)
 
-    
-    def stay_in_touch(self):
+
+    def handle_dead_clients(self):
+        tmp_list: list[Tcp.Computer] = []
+        for computer in self.computers:
+            if not computer.dead:
+                tmp_list.append(computer)
+            
+            else:
+                computer.terminate()
+            
+        self.computers = tmp_list
+
+
+    def mainloop(self):
         while running:
             pit = time()
-            
-            tmp_computers = []
-            for computer in self.computers:
-                try:
-                    computer.send("ALIVE?")
-                
-                except OSError:
-                    pass
 
-                else:
-                    try:
-                        reply = computer.recv(1024)
-
-                    except OSError:
-                        pass
-
-                    else:
-                        if reply == "ALIVE":
-                            tmp_computers.append(computer)
-            
-            self.computers = tmp_computers
+            self.listen_for_connections()
+            self.handle_dead_clients()
 
             elapsed = time() - pit
-            sleep(max(0, self.time_between_catchups - elapsed))
+            sleep(max(0, self.min_loop_time - elapsed))
 
 
     def terminate(self):
+        for computer in self.computers:
+            computer.terminate()
+
         self.socket.close()
-        self.listen_for_connections_thread.join()
-        self.stay_in_touch_thread.join()
+        self.main_thread.join()
 
 
     class Computer:
@@ -120,13 +113,73 @@ class Tcp:
             self.port: int = _retadress[1]
             self.name = name
 
+            self.dead = False
+            self.admin = False
+
+            self.mainThread = Thread(target=self.mainloop)
+            self.mainThread.start()
+
+            self.time_between_checkup = 10
+            self.loop_min_time = 1
+            
+
         def send(self, msg: str):
             self.socket.send(msg.upper().encode())
 
+
         def recv(self, size: int):
-            return self.socket.recv(size).decode().upper()            
+            return self.socket.recv(size).decode().upper()
+
+
+        def stay_in_touch(self):
+            try:
+                self.send("ALIVE?")
+
+            except OSError: self.dead = True
+            
+            else:
+                try: 
+                    message = self.recv(1024)
+                
+                except OSError: self.dead = True
+
+                else: 
+                    if message != "ALIVE":
+                        self.dead = True
 
         
+        def listen(self):
+            try:
+                message = self.recv(1024)
+
+            except OSError: pass
+
+            else:
+                return message
+            
+
+        def mainloop(self):
+            last_check = 0
+            while running and not self.dead:
+                pit = time()
+
+                if (time() - last_check) >= self.time_between_checkup:
+                    self.stay_in_touch()
+                    last_check = time()
+
+                message = self.listen()
+                match message:
+                    case "LOGIN":
+                        pass
+
+                elapsed = time() - pit
+                sleep(max(0, self.loop_min_time - elapsed))
+
+
+        def terminate(self):
+            self.socket.close()
+            self.mainThread.join()
+
 
 
 
@@ -223,10 +276,7 @@ class Output(Colors):
         self.desc()
 
 
-
-
 running = True
-paused = False
 delay = 1
 
 
@@ -247,8 +297,6 @@ def lockout(sig, frame):
     print(" is locked..")
 
 
-
-
 signal(SIGINT, graceFullStop)
 signal(SIGTERM, graceFullStop)
 signal(SIGTSTP, lockout)
@@ -262,3 +310,5 @@ while running:
     elapsed = time() - pit
     sleep(max(0, delay - elapsed))
 
+
+tcp.terminate()

@@ -21,13 +21,13 @@ class Tcp:
         
         self.connected = False
         self.last_handshake: float = None
-        self.threshold: int = 45
+        self.threshold: int = 30
+        self.min_loop_time = 1
 
         self.socket = socket()
         
-        self.check_connection_thread = Thread(target=self.check_connection)
-        self.check_connection_thread.daemon = True
-        self.check_connection_thread.start()
+        self.main_thread = Thread(target=self.mainloop)
+        self.main_thread.start()
 
 
     def send(self, msg: str):
@@ -39,53 +39,59 @@ class Tcp:
     
 
     def connect(self):
-        delay = 1
+        self.socket = socket(AF_INET, SOCK_STREAM)
+        self.socket.settimeout(1)
 
-        while not self.connected and running:
-            pit = time()
-
-            self.socket = socket(AF_INET, SOCK_STREAM)
-            self.socket.settimeout(1)
-
-            try: 
-                self.socket.connect((self.target_ip, self.port))
+        try: 
+            self.socket.connect((self.target_ip, self.port))
             
+        except OSError: pass
+
+
+        else: 
+            try: 
+                self.send(gethostname())
+
             except OSError: pass
 
 
-            else: 
+            else:
                 try: 
-                    self.send(gethostname())
+                    message = self.recv()
 
                 except OSError: pass
 
-
                 else:
-                    try: 
-                        message = self.recv()
-
-                    except OSError: pass
-
-                    else:
-                        if message == "CONNECTED":
-                            self.connected = True
-                            self.last_handshake = time()
-                            break
+                    if message == "CONNECTED":
+                        self.connected = True
+                        self.last_handshake = time()
 
 
-            elapsed = time() - pit
-            sleep(max(0, delay - elapsed))
+    def check_dead_connection(self):
+        if (time() - self.last_handshake) > self.threshold:
+            self.connected = False
+
+    
+    def answer_alive(self):
+        self.send("ALIVE")
+        self.last_handshake = time()
 
 
     def terminate(self):
         self.socket.close()
-        self.check_connection_thread.join()
-
-            
+        self.main_thread.join()
 
 
 running = True
+block = False
+admin = False
+passwd = None
+min_loop_time = 0.5
+recv_buffer: list[str] = []
+send_buffer: list[str] = []
+
 tcp = Tcp("sprch.hellgren.dev", 8888)
+
 
 def gracefullStop(sig, frame):
     global running
@@ -96,40 +102,35 @@ signal(SIGINT, gracefullStop)
 signal(SIGTERM, gracefullStop)
 
 
-def tcp_mainloop():
-    while running:
+def client():
+    while not admin and passwd is None:
         pit = time()
 
-        tcp.connect()
-        
         try:
             message = tcp.recv()
 
         except OSError: pass
-        
-        else:
-            match message:
-                case "ALIVE?":
-                    tcp.send("ALIVE")
-                    print("ALIVE")
+
+        else: 
+            recv_buffer.append(message)
+
+        try: 
+            tcp.send(send_buffer(0))
+            send_buffer.pop(0)
+
+        except OSError: pass
+
+
 
         elapsed = time() - pit
-        sleep(max(0, 1 - elapsed))
-
-tcp_thread = Thread(target=tcp_mainloop)
-tcp_thread.start()
-
-
-
+        sleep(max(0, min_loop_time - elapsed))
 
 while running:
     pit = time()
 
+    client()
+
     elapsed = time() - pit
-    sleep(max(0, 1 - elapsed))
-
-
-
+    sleep(max(0, min_loop_time - elapsed))
 
 tcp.terminate()
-tcp_thread.join()
