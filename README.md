@@ -2,8 +2,6 @@
 
 Specially Protected Remote Controll (by) Hellgren
 
-<img src="banner.jpg">
-
 Av Oscar Hellgren Te23A Ebersteinska Gymnasium 
 
 ## 1. Innehålls förtekning
